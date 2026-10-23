@@ -1,86 +1,95 @@
 import torch
-from torch import nn as nn 
-import matplotlib.pyplot as plot
-import plotPredictions as PP
+from torch import nn as nn
+import matplotlib.pyplot as plt
+from sklearn.datasets import make_circles
+import pandas as pd 
+from sklearn.model_selection import train_test_split
 
-# We're making formula y = a * x1 + b * x2 + c
+n_samples = 1000
+X, y = make_circles(n_samples, 
+                    noise = 0.03,
+                    random_state=42)
 
-X_first = torch.randint(30,120,(100,)).unsqueeze(dim = 1)
+# print(f"pierwsze 5 X: \n {X[:5]}")
+# print(f"pierwsze 5 y: \n {y[:5]}")
 
+circles = pd.DataFrame({"X1" : X[:,0],
+                        "X2" : X[:,1],
+                        "label" : y})
 
+print(circles.head(10))
 
-X_second = torch.randint(1,5,(100,)).unsqueeze(dim = 1)
+print(circles.label.value_counts())
 
-X = torch.cat((X_first,X_second),1).float() # first column - X1(random number from 30 to 120) second column - X2(random number from 1 to 5)
+plt.scatter(x = X[:,0],
+            y = X[:,1],
+            c = y,
+            cmap = plt.cm.RdYlBu);
 
-X[:, 0:1] = X[: ,0:1] / 120
-X[:, 1:2] = X[: ,1:2] / 5
+# plt.show()
 
-a = 0.7
-b = 0.5
-c = 0.3
+# print(X.shape , y.shape)
 
-y = a * X[: , 0:1] + b * X[: , 1:2] + c
+X = torch.from_numpy(X).type(torch.float)
+y = torch.from_numpy(y).type(torch.float)
 
-train_data = (int)(0.8 * len(X))
+# print(X[:5] , " \n " , y[:5])
 
-X_train = X[:train_data]
-X_test = X[train_data:]
+X_train, X_test , y_train, y_test = train_test_split(X ,y , test_size=0.2, random_state=42)
 
-y_train = y[:train_data]
-y_test = y[train_data:]
+# print(f"train size: {len(X_train)}. \ntest size: {len(X_test)}")
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(device)
 
-class MultipleLinearRegression(nn.Module):
+class CircleModel(nn.Module):
     def __init__(self):
         super().__init__()
-        self.weight1 = nn.Parameter(torch.randn(1, 
-                                                dtype=torch.float,
-                                                requires_grad=True)
-                                                )
-        self.weight2 = nn.Parameter(torch.randn(1, 
-                                                dtype=torch.float,
-                                                requires_grad=True)
-                                                )
-        self.bias = nn.Parameter(torch.randn(1, 
-                                                dtype=torch.float,
-                                                requires_grad=True)
-                                                )
+        self.layer1 = nn.Linear(in_features=2,out_features=5)
+        self.layer2 = nn.Linear(in_features=5,out_features=1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.weight1 * x[: , 0:1] + self.weight2 * x[: , 1:2] + self.bias
+    def forward(self, x):
+        return self.layer2(self.layer1(x))
 
-model = MultipleLinearRegression()
 
-print(model.state_dict())
 
-with torch.inference_mode():
-    y_start_pred = model(X_test)
+# model1 = CircleModel()
+model1 = nn.Sequential(
+    nn.Linear(in_features=2,out_features=5),
+    nn.Linear(in_features=5,out_features=1)
+).to(device)
+print(model1)
 
-loss_fn = nn.L1Loss()
+untrained_preds = model1(X_test.to(device))
 
-optimizer = torch.optim.Adam(model.parameters(), lr = 0.0001)
+loss_fn = nn.BCEWithLogitsLoss()
 
-epochs = 50000
+optimizer = torch.optim.SGD(params=model1.parameters(), lr= 0.01)
+
+def accuracy(y_true, y_pred):
+    correct = torch.eq(y_true, y_pred).sum().item()
+    acc = (correct / len(y_true)) * 100
+    return acc
+
+
+y_start = model1(X_test.to(device))[:5]
+print(y_start)
+
+epochs = 1000
 
 for epoch in range(epochs):
-    model.train() 
 
-    y_1 = model(X_train)
-    loss = loss_fn(y_1, y_train)
+    model1.train()
+    y1 = model1.forward(X_train)    
+    loss = loss_fn(y1, y_train)
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
 
-    model.eval()
+    model1.eval()
     with torch.inference_mode():
-        y_end_pred = model(X_test)
-        test_loss = loss_fn(y_end_pred,y_test)
-
-        # if epoch % 10 == 0:
-            # print(f"Parametry: epoka {epoch}. Wartosci: {model.state_dict()}")
-
-print(a , b , c)
-print(model.state_dict())
+        y_test_pred = model1(X_test)
+        test_loss = loss_fn(y_test_pred,y_test)
 
 
+    
