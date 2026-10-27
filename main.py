@@ -97,8 +97,8 @@ torch.cuda.manual_seed(42)
 for epoch in range(epochs):
     model1.train()
     
-    y1 = model1(X_train).squeeze()
-    y_preds_probs = torch.sigmoid(y1)
+    y1 = model1(X_train).squeeze() # logits 
+    y_preds_probs = torch.sigmoid(y1) # 
     y_preds = torch.round(y_preds_probs)
 
     loss = loss_fn(y1, y_train)
@@ -125,9 +125,84 @@ plt.figure(figsize=(12,6))
 plt.subplot(1,2,1)
 plt.title("Train")
 plt_dec(model1,X_train,y_train)
-plt.show()
 
 plt.subplot(1,2,2)
 plt.title("Test")
 plt_dec(model1, X_test,y_test)
+plt.show()
+
+n_samples = 10000
+
+X1, y1 =datasets.make_moons(n_samples= n_samples, noise=0.1)
+
+X1 = torch.from_numpy(X1).type(torch.float)
+y1 = torch.from_numpy(y1).type(torch.float)
+test_train = (int)(0.8 * n_samples)
+
+X1_train = X1[:test_train]
+X1_test = X1[test_train:]
+
+y1_train = y1[:test_train]
+y1_test = y1[test_train:]
+
+
+print(len(X1_train), len((X1_test)))
+
+class Model2(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer1 = nn.Linear(in_features= 2, out_features= 64)
+        self.layer2 = nn.Linear(in_features=64, out_features=128)
+        self.layer3 = nn.Linear(in_features=128, out_features=64)
+        self.layer4 = nn.Linear(in_features=64, out_features=1)
+        self.relu = nn.ReLU()
+    def forward(self,x):
+        z = self.relu(self.layer1(x))
+        z = self.relu(self.layer2(z))
+        z = self.relu(self.layer3(z))
+        z = self.layer4(z)
+        return z
+
+model2 = Model2().to(device)
+
+loss2_fn = torch.nn.BCEWithLogitsLoss()
+optimizer2 = torch.optim.Adam(params=model2.parameters(), lr = 0.01)
+
+X1_train, y1_train = X1_train.to(device) , y1_train.to(device)
+X1_test, y1_test = X1_test.to(device), y1_test.to(device)
+
+epochs = 1000
+
+for epoch in range(epochs):
+    model2.train()
+
+    y2_logits = model2(X1_train).squeeze()
+    y2_preds = torch.round(torch.sigmoid(y2_logits)) # forward
+
+    loss2 = loss2_fn(y2_logits, y1_train) # loss calculation
+
+    optimizer2.zero_grad() # zero grad
+
+    loss2.backward() # backpropagation
+
+    optimizer2.step()
+
+    model2.eval()
+    with torch.inference_mode():
+        y2_test_logits = model2(X1_test).squeeze()
+        loss2_test = loss2_fn(y2_test_logits, y1_test)
+
+    if epoch % 100 == 0:
+        print(f"epoch {epoch} loss: {loss} \n test_loss: {loss2_test}") 
+
+
+
+plt.figure(figsize=(12,6))
+plt.subplot(1,2,1)
+plt.title("Train")
+plt_dec(model2,X1_train,y1_train)
+
+plt.subplot(1,2,2)
+plt.title("Test")
+plt_dec(model2, X1_test,y1_test)
 plt.show()
